@@ -61,7 +61,7 @@ class XactTracker[U <: Data](nXacts: Int, maxShift: Int, spadWidth: Int, accWidt
     val peek = new XactTrackerPeekIO(nXacts, maxShift, spadWidth, accWidth, spadRows, accRows, maxReqBytes, mvin_scale_t_bits, nCmds)
     val busy = Output(Bool())
 
-    val counter = new CounterEventIO()
+    // val counter = new CounterEventIO()
   })
 
   val entries = Reg(Vec(nXacts, UDValid(new XactTrackerEntry(maxShift, spadWidth, accWidth, spadRows, accRows, maxReqBytes, mvin_scale_t_bits, nCmds))))
@@ -88,22 +88,22 @@ class XactTracker[U <: Data](nXacts: Int, maxShift: Int, spadWidth: Int, accWidt
     entries.foreach(_.valid := false.B)
   }
 
-  // Performance counters
-  CounterEventIO.init(io.counter)
+  // // Performance counters
+  // CounterEventIO.init(io.counter)
 
-  val total_latency = RegInit(0.U(CounterExternal.EXTERNAL_WIDTH.W))
-  when (io.counter.external_reset) {
-    total_latency := 0.U
-  }.otherwise {
-    total_latency := total_latency + PopCount(entries.map(_.valid))
-  }
+  // val total_latency = RegInit(0.U(CounterExternal.EXTERNAL_WIDTH.W))
+  // when (io.counter.external_reset) {
+  //   total_latency := 0.U
+  // }.otherwise {
+  //   total_latency := total_latency + PopCount(entries.map(_.valid))
+  // }
 
-  io.counter.connectExternalCounter(CounterExternal.RDMA_TOTAL_LATENCY, total_latency)
+  // io.counter.connectExternalCounter(CounterExternal.RDMA_TOTAL_LATENCY, total_latency)
 
-  if (use_firesim_simulation_counters) {
-    val cntr = Counter(500000)
-    when(cntr.inc()) {
-      printf(SynthesizePrintf("RDMA total latency: %d\n", total_latency))
-    }
-  }
+  // if (use_firesim_simulation_counters) {
+  //   val cntr = Counter(500000)
+  //   when(cntr.inc()) {
+  //     printf(SynthesizePrintf("RDMA total latency: %d\n", total_latency))
+  //   }
+  // }
 }

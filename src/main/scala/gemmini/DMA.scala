@@ -67,7 +67,7 @@ class StreamReader[T <: Data, U <: Data, V <: Data](config: GemminiArrayConfig[T
       val busy = Output(Bool())
       val flush = Input(Bool())
 
-      val counter = new CounterEventIO()
+      // val counter = new CounterEventIO()
     })
 
     val nCmds = (nXacts / meshRows) + 1
@@ -108,8 +108,8 @@ class StreamReader[T <: Data, U <: Data, V <: Data](config: GemminiArrayConfig[T
     io.resp.bits.bytes_read := RegEnable(xactTracker.io.peek.entry.bytes_to_read, beatPacker.io.req.fire)
     io.resp.bits.last := beatPacker.io.out.bits.last
 
-    io.counter.collect(core.module.io.counter)
-    io.counter.collect(xactTracker.io.counter)
+    // io.counter.collect(core.module.io.counter)
+    // io.counter.collect(xactTracker.io.counter)
   }
 }
 
@@ -150,7 +150,7 @@ class StreamReaderCore[T <: Data, U <: Data, V <: Data](config: GemminiArrayConf
       val beatData = Decoupled(new StreamReadBeat(nXacts, beatBits, maxBytes))
       val tlb = new FrontendTLBIO
       val flush = Input(Bool())
-      val counter = new CounterEventIO()
+      // val counter = new CounterEventIO()
     })
 
     val s_idle :: s_req_new_block :: Nil = Enum(2)
@@ -304,32 +304,32 @@ class StreamReaderCore[T <: Data, U <: Data, V <: Data](config: GemminiArrayConf
       state := s_req_new_block
     }
 
-    // Performance counter
-    CounterEventIO.init(io.counter)
-    io.counter.connectEventSignal(CounterEvent.RDMA_ACTIVE_CYCLE, state =/= s_idle)
-    io.counter.connectEventSignal(CounterEvent.RDMA_TLB_WAIT_CYCLES, io.tlb.resp.miss)
-    io.counter.connectEventSignal(CounterEvent.RDMA_TL_WAIT_CYCLES, tl.a.valid && !tl.a.ready)
+    // // Performance counter
+    // CounterEventIO.init(io.counter)
+    // io.counter.connectEventSignal(CounterEvent.RDMA_ACTIVE_CYCLE, state =/= s_idle)
+    // io.counter.connectEventSignal(CounterEvent.RDMA_TLB_WAIT_CYCLES, io.tlb.resp.miss)
+    // io.counter.connectEventSignal(CounterEvent.RDMA_TL_WAIT_CYCLES, tl.a.valid && !tl.a.ready)
 
-    // External counters
-    val total_bytes_read = RegInit(0.U(CounterExternal.EXTERNAL_WIDTH.W))
-    when (io.counter.external_reset) {
-      total_bytes_read := 0.U
-    }.elsewhen (tl.d.fire) {
-      total_bytes_read := total_bytes_read + (1.U << tl.d.bits.size)
-    }
+    // // External counters
+    // val total_bytes_read = RegInit(0.U(CounterExternal.EXTERNAL_WIDTH.W))
+    // when (io.counter.external_reset) {
+    //   total_bytes_read := 0.U
+    // }.elsewhen (tl.d.fire) {
+    //   total_bytes_read := total_bytes_read + (1.U << tl.d.bits.size)
+    // }
 
-    io.counter.connectExternalCounter(CounterExternal.RDMA_BYTES_REC, total_bytes_read)
+    // io.counter.connectExternalCounter(CounterExternal.RDMA_BYTES_REC, total_bytes_read)
 
-    if (use_firesim_simulation_counters) {
-      PerfCounter(state =/= s_idle, "rdma_active_cycles", "cycles during which the read dma is active")
-      PerfCounter(tl.a.ready && translate_q.io.deq.valid && io.tlb.resp.miss, "rdma_tlb_wait_cycles", "cycles during which the read dma is stalling as it waits for a TLB response")
-      PerfCounter(tl.a.valid && !tl.a.ready, "rdma_tl_wait_cycles", "cycles during which the read dma is stalling as it waits for the TileLink port to be available")
+    // if (use_firesim_simulation_counters) {
+    //   PerfCounter(state =/= s_idle, "rdma_active_cycles", "cycles during which the read dma is active")
+    //   PerfCounter(tl.a.ready && translate_q.io.deq.valid && io.tlb.resp.miss, "rdma_tlb_wait_cycles", "cycles during which the read dma is stalling as it waits for a TLB response")
+    //   PerfCounter(tl.a.valid && !tl.a.ready, "rdma_tl_wait_cycles", "cycles during which the read dma is stalling as it waits for the TileLink port to be available")
 
-      val cntr = Counter(500000)
-      when (cntr.inc()) {
-        printf(SynthesizePrintf("RDMA bytes rec: %d\n", total_bytes_read))
-      }
-    }
+    //   val cntr = Counter(500000)
+    //   when (cntr.inc()) {
+    //     printf(SynthesizePrintf("RDMA bytes rec: %d\n", total_bytes_read))
+    //   }
+    // }
   }
 }
 
@@ -371,7 +371,7 @@ class StreamWriter[T <: Data: Arithmetic](nXacts: Int, beatBits: Int, maxBytes: 
       val tlb = new FrontendTLBIO
       val busy = Output(Bool())
       val flush = Input(Bool())
-      val counter = new CounterEventIO()
+      // val counter = new CounterEventIO()
     })
 
     val (s_idle :: s_writing_new_block :: s_writing_beats :: Nil) = Enum(3)
@@ -607,39 +607,39 @@ class StreamWriter[T <: Data: Arithmetic](nXacts: Int, beatBits: Int, maxBytes: 
       assert(!io.req.bits.pool_en || io.req.bits.block === 0.U, "Can't pool with block-mvout")
     }
 
-    // Performance counter
-    CounterEventIO.init(io.counter)
-    io.counter.connectEventSignal(CounterEvent.WDMA_ACTIVE_CYCLE, state =/= s_idle)
-    io.counter.connectEventSignal(CounterEvent.WDMA_TLB_WAIT_CYCLES, io.tlb.resp.miss)
-    io.counter.connectEventSignal(CounterEvent.WDMA_TL_WAIT_CYCLES, tl.a.valid && !tl.a.ready)
+    // // Performance counter
+    // CounterEventIO.init(io.counter)
+    // io.counter.connectEventSignal(CounterEvent.WDMA_ACTIVE_CYCLE, state =/= s_idle)
+    // io.counter.connectEventSignal(CounterEvent.WDMA_TLB_WAIT_CYCLES, io.tlb.resp.miss)
+    // io.counter.connectEventSignal(CounterEvent.WDMA_TL_WAIT_CYCLES, tl.a.valid && !tl.a.ready)
 
-    // External counters
-    val total_bytes_sent = RegInit(0.U(CounterExternal.EXTERNAL_WIDTH.W))
-    when (tl.d.fire) {
-      total_bytes_sent := total_bytes_sent + (1.U << tl.d.bits.size)
-    }
+    // // External counters
+    // val total_bytes_sent = RegInit(0.U(CounterExternal.EXTERNAL_WIDTH.W))
+    // when (tl.d.fire) {
+    //   total_bytes_sent := total_bytes_sent + (1.U << tl.d.bits.size)
+    // }
 
-    val total_latency = RegInit(0.U(CounterExternal.EXTERNAL_WIDTH.W))
-    total_latency := total_latency + PopCount(xactBusy)
+    // val total_latency = RegInit(0.U(CounterExternal.EXTERNAL_WIDTH.W))
+    // total_latency := total_latency + PopCount(xactBusy)
 
-    when (io.counter.external_reset) {
-      total_bytes_sent := 0.U
-      total_latency := 0.U
-    }
+    // when (io.counter.external_reset) {
+    //   total_bytes_sent := 0.U
+    //   total_latency := 0.U
+    // }
 
-    io.counter.connectExternalCounter(CounterExternal.WDMA_BYTES_SENT, total_bytes_sent)
-    io.counter.connectExternalCounter(CounterExternal.WDMA_TOTAL_LATENCY, total_latency)
+    // io.counter.connectExternalCounter(CounterExternal.WDMA_BYTES_SENT, total_bytes_sent)
+    // io.counter.connectExternalCounter(CounterExternal.WDMA_TOTAL_LATENCY, total_latency)
 
-    if (use_firesim_simulation_counters) {
-      PerfCounter(state =/= s_idle, "wdma_active_cycles", "cycles during which write read dma is active")
-      PerfCounter(tl.a.ready && translate_q.io.deq.valid && io.tlb.resp.miss, "wdma_tlb_wait_cycles", "cycles during which the write dma is stalling as it waits for a TLB response")
-      PerfCounter(tl.a.valid && !tl.a.ready, "wdma_tl_wait_cycles", "cycles during which the write dma is stalling as it waits for the TileLink port to be available")
+    // if (use_firesim_simulation_counters) {
+    //   PerfCounter(state =/= s_idle, "wdma_active_cycles", "cycles during which write read dma is active")
+    //   PerfCounter(tl.a.ready && translate_q.io.deq.valid && io.tlb.resp.miss, "wdma_tlb_wait_cycles", "cycles during which the write dma is stalling as it waits for a TLB response")
+    //   PerfCounter(tl.a.valid && !tl.a.ready, "wdma_tl_wait_cycles", "cycles during which the write dma is stalling as it waits for the TileLink port to be available")
 
-      val cntr = Counter(500000)
-      when(cntr.inc()) {
-        printf(SynthesizePrintf("WDMA bytes sent: %d\n", total_bytes_sent))
-        printf(SynthesizePrintf("WDMA total latency: %d\n", total_latency))
-      }
-    }
+    //   val cntr = Counter(500000)
+    //   when(cntr.inc()) {
+    //     printf(SynthesizePrintf("WDMA bytes sent: %d\n", total_bytes_sent))
+    //     printf(SynthesizePrintf("WDMA total latency: %d\n", total_latency))
+    //   }
+    // }
   }
 }
