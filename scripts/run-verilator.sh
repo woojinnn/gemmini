@@ -88,5 +88,7 @@ if [ ! -f "${full_binary_path}" ]; then
 fi
 
 cd ../../sims/verilator/
+# To skip initial cycles: +permissive +dump-start=40000 +permissive-off 
+# Related: <https://github.com/ucb-bar/gemmini/issues/240>
 ./simulator-chipyard-CustomGemminiSoCConfig${DEBUG} $PK ${full_binary_path}
 
