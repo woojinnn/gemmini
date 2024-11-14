@@ -17,10 +17,10 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
   val io = IO(new Bundle {
     val cmd = Flipped(Decoupled(new GemminiCmd(reservation_station_entries)))
 
-    val im2col = new Bundle {
-      val req = Decoupled(new Im2ColReadReq(config))
-      val resp = Flipped(Decoupled(new Im2ColReadResp(config)))
-    }
+    // val im2col = new Bundle {
+    //   val req = Decoupled(new Im2ColReadReq(config))
+    //   val resp = Flipped(Decoupled(new Im2ColReadResp(config)))
+    // }
 
     val srams = new Bundle {
       val read = Vec(sp_banks, new ScratchpadReadIO(sp_bank_entries, sp_width))
@@ -44,7 +44,7 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
     val completed = Valid(UInt(log2Up(reservation_station_entries).W))
     val busy = Output(Bool())
 
-    val counter = new CounterEventIO()
+    // val counter = new CounterEventIO()
   })
 
   val block_size = meshRows*tileRows
@@ -61,7 +61,8 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
     }
   }
 
-  val unrolled_cmd = TransposePreloadUnroller(io.cmd, config, io.counter)
+  // val unrolled_cmd = TransposePreloadUnroller(io.cmd, config, io.counter)
+  val unrolled_cmd = TransposePreloadUnroller(io.cmd, config)
 
   val cmd_q_heads = 3
   assert(ex_queue_length >= cmd_q_heads)
@@ -111,7 +112,7 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
   icol := ((ocol - 1.U) * weight_stride + krow)//.asSInt
   irow := ((orow - 1.U) * weight_stride + krow)//.asSInt
 
-  val im2col_turn = WireInit(0.U(9.W))
+  // val im2col_turn = WireInit(0.U(9.W))
 
   val in_shift = Reg(UInt(log2Up(accType.getWidth).W))
   val acc_scale = Reg(acc_scale_t)
@@ -132,8 +133,8 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
     (a_should_be_fed_into_transposer +& b_should_be_fed_into_transposer +& d_should_be_fed_into_transposer) > 1.U),
     "Too many inputs are being fed into the single transposer we have")
 
-  //fix by input
-  val im2col_en = config.hasIm2Col.B && weight_stride =/= 0.U
+  // //fix by input
+  // val im2col_en = config.hasIm2Col.B && weight_stride =/= 0.U
 
   // SRAM addresses of matmul operands
   val a_address_rs1 = rs1s(a_address_place).asTypeOf(local_addr_t)
@@ -311,18 +312,14 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
   val b_row_is_not_all_zeros = b_fire_counter < b_rows
   val d_row_is_not_all_zeros = block_size.U - 1.U - d_fire_counter < d_rows //Todo: d_fire_counter_mulpre?
 
-  val im2col_wire = io.im2col.req.ready
-
-  def same_bank(addr1: LocalAddr, addr2: LocalAddr, is_garbage1: Bool, is_garbage2: Bool, start_inputting1: Bool, start_inputting2: Bool, can_be_im2colled: Boolean): Bool = {
+  def same_bank(addr1: LocalAddr, addr2: LocalAddr, is_garbage1: Bool, is_garbage2: Bool, start_inputting1: Bool, start_inputting2: Bool): Bool = {
     val addr1_read_from_acc = addr1.is_acc_addr
     val addr2_read_from_acc = addr2.is_acc_addr
 
     val is_garbage = is_garbage1 || is_garbage2 ||
       !start_inputting1 || !start_inputting2
 
-    val is_being_im2colled = can_be_im2colled.B && im2col_wire && im2col_en//im2col_wire
-
-    !is_garbage && !is_being_im2colled && ((addr1_read_from_acc && addr2_read_from_acc) ||
+    !is_garbage && ((addr1_read_from_acc && addr2_read_from_acc) ||
       (!addr1_read_from_acc && !addr2_read_from_acc && addr1.sp_bank() === addr2.sp_bank()))
   }
 
@@ -330,18 +327,18 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
   val b_ready = WireInit(true.B)
   val d_ready = WireInit(true.B)
 
-  case class Operand(addr: LocalAddr, is_garbage: Bool, start_inputting: Bool, counter: UInt, started: Bool, can_be_im2colled: Boolean, priority: Int) {
+  case class Operand(addr: LocalAddr, is_garbage: Bool, start_inputting: Bool, counter: UInt, started: Bool, priority: Int) {
     val done = counter === 0.U && started
   }
-  val a_operand = Operand(a_address, a_address_rs1.is_garbage(), start_inputting_a, a_fire_counter, a_fire_started, true, 0)
-  val b_operand = Operand(b_address, b_address_rs2.is_garbage(), start_inputting_b, b_fire_counter, b_fire_started, false, 1)
-  val d_operand = Operand(d_address, d_address_rs1.is_garbage(), start_inputting_d, d_fire_counter, d_fire_started, false, 2)
+  val a_operand = Operand(a_address, a_address_rs1.is_garbage(), start_inputting_a, a_fire_counter, a_fire_started, 0)
+  val b_operand = Operand(b_address, b_address_rs2.is_garbage(), start_inputting_b, b_fire_counter, b_fire_started, 1)
+  val d_operand = Operand(d_address, d_address_rs1.is_garbage(), start_inputting_d, d_fire_counter, d_fire_started, 2)
   val operands = Seq(a_operand, b_operand, d_operand)
 
-  val Seq(a_valid, b_valid, d_valid) = operands.map { case Operand(addr, is_garbage, start_inputting, counter, started, can_be_im2colled, priority) =>
+  val Seq(a_valid, b_valid, d_valid) = operands.map { case Operand(addr, is_garbage, start_inputting, counter, started, priority) =>
     val others = operands.filter(_.priority != priority)
 
-    val same_banks = others.map(o => same_bank(addr, o.addr, is_garbage, o.is_garbage, start_inputting, o.start_inputting, can_be_im2colled || o.can_be_im2colled))
+    val same_banks = others.map(o => same_bank(addr, o.addr, is_garbage, o.is_garbage, start_inputting, o.start_inputting))
     val same_counter = others.map(o => started === o.started && counter === o.counter)
 
     val one_ahead = others.map(o => started && counter === wrappingAdd(o.counter, 1.U, total_rows))
@@ -394,11 +391,12 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
     mul_pre_counter_lock := true.B
   }
 
-  when(!io.im2col.resp.bits.im2col_delay && performing_mul_pre){
-    mul_pre_counter_sub := Mux(mul_pre_counter_sub > 0.U,  mul_pre_counter_sub - 1.U, 0.U)
-  }.elsewhen(io.im2col.resp.bits.im2col_delay){
-    mul_pre_counter_sub := 2.U
-  }.otherwise{mul_pre_counter_sub := 0.U}
+  // when(!io.im2col.resp.bits.im2col_delay && performing_mul_pre){
+  //   mul_pre_counter_sub := Mux(mul_pre_counter_sub > 0.U,  mul_pre_counter_sub - 1.U, 0.U)
+  // }.elsewhen(io.im2col.resp.bits.im2col_delay){
+  //   mul_pre_counter_sub := 2.U
+  // }.otherwise{mul_pre_counter_sub := 0.U}
+  mul_pre_counter_sub := 0.U
 
   // The last line in this (long) Boolean is just to make sure that we don't think we're done as soon as we begin firing
   // TODO change when square requirement lifted
@@ -414,14 +412,14 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
     d_fire_started := false.B
   }
 
-  val d_fire_counter_mulpre = WireInit(b_fire_counter)
-  when(performing_mul_pre && !io.im2col.resp.bits.im2col_delay&&im2col_en){
-    d_fire_counter_mulpre := d_fire_counter - mul_pre_counter_sub
-  }.otherwise{d_fire_counter_mulpre := d_fire_counter}
+  // val d_fire_counter_mulpre = WireInit(b_fire_counter)
+  // when(performing_mul_pre && !io.im2col.resp.bits.im2col_delay&&im2col_en){
+  //   d_fire_counter_mulpre := d_fire_counter - mul_pre_counter_sub
+  // }.otherwise{d_fire_counter_mulpre := d_fire_counter}
 
   // Scratchpad reads
   for (i <- 0 until sp_banks) {
-    val read_a = a_valid && !a_read_from_acc && dataAbank === i.U && start_inputting_a && !multiply_garbage && a_row_is_not_all_zeros && !(im2col_wire&&im2col_en)
+    val read_a = a_valid && !a_read_from_acc && dataAbank === i.U && start_inputting_a && !multiply_garbage && a_row_is_not_all_zeros //&& !(im2col_wire&&im2col_en)
     val read_b = b_valid && !b_read_from_acc && dataBbank === i.U && start_inputting_b && !accumulate_zeros && b_row_is_not_all_zeros //&& !im2col_wire
     val read_d = d_valid && !d_read_from_acc && dataDbank === i.U && start_inputting_d && !preload_zeros && d_row_is_not_all_zeros //&& !im2col_wire
 
@@ -434,16 +432,9 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
     if (ex_read_from_spad) {
       io.srams.read(i).req.valid := (read_a || read_b || read_d) && cntl_ready
       io.srams.read(i).req.bits.fromDMA := false.B
-      io.srams.read(i).req.bits.addr := MuxCase(a_address_rs1.sp_row() + a_fire_counter,
-        Seq(read_b -> (b_address_rs2.sp_row() + b_fire_counter),
-          read_d -> (d_address_rs1.sp_row() + block_size.U - 1.U - d_fire_counter_mulpre)))
-
-      // TODO this just overrides the previous line. Should we erase the previous line?
-      when(im2col_en === false.B) {
-        io.srams.read(i).req.bits.addr := MuxCase(a_address.sp_row(),
-          Seq(read_b -> b_address.sp_row(),
-            read_d -> d_address.sp_row()))
-      }
+      io.srams.read(i).req.bits.addr := MuxCase(a_address.sp_row(),
+        Seq(read_b -> b_address.sp_row(),
+          read_d -> d_address.sp_row()))
     } else {
       io.srams.read(i).req.valid := false.B
       io.srams.read(i).req.bits.fromDMA := false.B
@@ -455,7 +446,7 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
 
   // Accumulator read
   for (i <- 0 until acc_banks) {
-    val read_a_from_acc = a_valid && a_read_from_acc && dataABankAcc === i.U && start_inputting_a && !multiply_garbage && a_row_is_not_all_zeros && !(im2col_wire&&im2col_en)
+    val read_a_from_acc = a_valid && a_read_from_acc && dataABankAcc === i.U && start_inputting_a && !multiply_garbage && a_row_is_not_all_zeros //&& !(im2col_wire&&im2col_en)
     val read_b_from_acc = b_valid && b_read_from_acc && dataBBankAcc === i.U && start_inputting_b && !accumulate_zeros && b_row_is_not_all_zeros //&& !im2col_wire
     val read_d_from_acc = d_valid && d_read_from_acc && dataDBankAcc === i.U && start_inputting_d && !preload_zeros && d_row_is_not_all_zeros //&& !im2col_wire
 
@@ -475,16 +466,9 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
       io.acc.read_req(i).bits.iexp_qln2_inv := DontCare
       io.acc.read_req(i).bits.act := activation
       io.acc.read_req(i).bits.fromDMA := false.B
-      io.acc.read_req(i).bits.addr := MuxCase(a_address_rs1.acc_row() + a_fire_counter,
-        Seq(read_b_from_acc -> (b_address_rs2.acc_row() + b_fire_counter),
-          read_d_from_acc -> (d_address_rs1.acc_row() + block_size.U - 1.U - d_fire_counter)))
-
-      // TODO this just overrides the previous line. Should we erase the previous line?
-      when(im2col_en === false.B){
-        io.acc.read_req(i).bits.addr := MuxCase(a_address.acc_row(),
+      io.acc.read_req(i).bits.addr := MuxCase(a_address.acc_row(),
           Seq(read_b_from_acc -> b_address.acc_row(),
             read_d_from_acc -> d_address.acc_row()))
-      }
     } else {
       io.acc.read_req(i).valid := false.B
       io.acc.read_req(i).bits.scale := DontCare
@@ -499,33 +483,6 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
     }
 
     io.acc.read_resp(i).ready := false.B
-  }
-
-  // Im2Col reads
-  {
-    val read_a = a_valid && start_inputting_a && !multiply_garbage && im2col_wire&&im2col_en //or just im2col_wire
-
-    when (read_a && !io.im2col.req.ready) {
-      a_ready := false.B
-    }
-
-    io.im2col.req.valid := read_a
-    io.im2col.req.bits.addr := a_address_rs1
-    io.im2col.req.bits.icol := icol
-    io.im2col.req.bits.irow := irow
-    io.im2col.req.bits.ocol := ocol
-    io.im2col.req.bits.stride := weight_stride
-    io.im2col.req.bits.krow := krow
-    io.im2col.req.bits.kdim2 := kdim2
-    io.im2col.req.bits.row_turn := row_turn
-    io.im2col.req.bits.row_left := row_left
-    io.im2col.req.bits.channel := channel
-    io.im2col.req.bits.im2col_cmd := im2col_en
-    io.im2col.req.bits.start_inputting := start_inputting_a
-    io.im2col.req.bits.weight_double_bank := weight_double_bank
-    io.im2col.req.bits.weight_triple_bank := weight_triple_bank
-
-    io.im2col.resp.ready := mesh.io.a.ready
   }
 
   // FSM logic
@@ -564,16 +521,6 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
             a_addr_stride := config_ex_rs1.a_stride // TODO this needs to be kept in sync with ROB.scala
             c_addr_stride := config_ex_rs2.c_stride // TODO this needs to be kept in sync with ROB.scala
             config_initialized := true.B
-          }.otherwise { // config_cmd_type === CONFIG_IM2COL
-            ocol := cmd.bits(0).cmd.rs2(63, 56)
-            kdim2 := cmd.bits(0).cmd.rs2(55, 48) //increased bitwidth
-            krow := cmd.bits(0).cmd.rs2(47, 44) //increased bitwidth
-            channel := cmd.bits(0).cmd.rs2(31, 23)
-            weight_stride := cmd.bits(0).cmd.rs2(22, 20)
-            weight_double_bank := cmd.bits(0).cmd.rs1(58) //added
-            weight_triple_bank := cmd.bits(0).cmd.rs1(59)
-            row_left := cmd.bits(0).cmd.rs1(57, 54)
-            row_turn := cmd.bits(0).cmd.rs1(53, 42)
           }
 
           io.completed := cmd.bits(0).rob_id
@@ -742,7 +689,7 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
     val prop = UInt(1.W)
     val shift = UInt(log2Up(accType.getWidth).W)
 
-    val im2colling = Bool()
+    // val im2colling = Bool()
 
     val first = Bool()
   }
@@ -796,24 +743,24 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
   mesh_cntl_signals_q.io.enq.bits.prop := Mux(performing_single_preload, in_prop_flush, in_prop)//prop) //available propagate or not?
   mesh_cntl_signals_q.io.enq.bits.shift := in_shift
 
-  mesh_cntl_signals_q.io.enq.bits.im2colling := im2col_wire && im2col_en //im2col_wire
+  // mesh_cntl_signals_q.io.enq.bits.im2colling := im2col_wire && im2col_en //im2col_wire
 
   mesh_cntl_signals_q.io.enq.bits.first := !a_fire_started && !b_fire_started && !d_fire_started
 
   val readData = VecInit(io.srams.read.map(_.resp.bits.data))
   val accReadData = if (ex_read_from_acc) VecInit(io.acc.read_resp.map(_.bits.data.asUInt)) else readData
-  val im2ColData = io.im2col.resp.bits.a_im2col.asUInt
+  // val im2ColData = io.im2col.resp.bits.a_im2col.asUInt
 
   val readValid = VecInit(io.srams.read.map(bank => ex_read_from_spad.B && bank.resp.valid && !bank.resp.bits.fromDMA))
   val accReadValid = VecInit(io.acc.read_resp.map(bank => ex_read_from_acc.B && bank.valid && !bank.bits.fromDMA))
-  val im2ColValid = io.im2col.resp.valid
+  // val im2ColValid = io.im2col.resp.valid
 
   mesh_cntl_signals_q.io.deq.ready := (!cntl.a_fire || mesh.io.a.fire || !mesh.io.a.ready) &&
     (!cntl.b_fire || mesh.io.b.fire || !mesh.io.b.ready) &&
     (!cntl.d_fire || mesh.io.d.fire || !mesh.io.d.ready) &&
     (!cntl.first || mesh.io.req.ready)
 
-  val dataA_valid = cntl.a_garbage || cntl.a_unpadded_cols === 0.U || Mux(cntl.im2colling, im2ColValid, Mux(cntl.a_read_from_acc, accReadValid(cntl.a_bank_acc), readValid(cntl.a_bank)))
+  val dataA_valid = cntl.a_garbage || cntl.a_unpadded_cols === 0.U || Mux(cntl.a_read_from_acc, accReadValid(cntl.a_bank_acc), readValid(cntl.a_bank))
 
   val dataB_valid = cntl.b_garbage || cntl.b_unpadded_cols === 0.U || MuxCase(readValid(cntl.b_bank), Seq(
     cntl.accumulate_zeros -> false.B,
@@ -829,7 +776,7 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
   //val neg_shift_sub = block_size.U - cntl.c_rows
   preload_zero_counter := wrappingAdd(preload_zero_counter, 1.U, block_size.U, dataA_valid && dataD_valid && cntl.preload_zeros && (cntl.perform_single_preload || cntl.perform_mul_pre))
 
-  val dataA_unpadded = Mux(cntl.im2colling, im2ColData, Mux(cntl.a_read_from_acc, accReadData(cntl.a_bank_acc), readData(cntl.a_bank)))
+  val dataA_unpadded = Mux(cntl.a_read_from_acc, accReadData(cntl.a_bank_acc), readData(cntl.a_bank))
   val dataB_unpadded = MuxCase(readData(cntl.b_bank), Seq(cntl.accumulate_zeros -> 0.U, cntl.b_read_from_acc -> accReadData(cntl.b_bank_acc)))
   val dataD_unpadded = MuxCase(readData(cntl.d_bank), Seq(cntl.preload_zeros -> 0.U, cntl.d_read_from_acc -> accReadData(cntl.d_bank_acc)))
 
@@ -839,7 +786,7 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
 
   // Pop responses off the scratchpad io ports
   when (mesh_cntl_signals_q.io.deq.fire) {
-    when (cntl.a_fire && mesh.io.a.fire && !cntl.a_garbage && cntl.a_unpadded_cols > 0.U && !cntl.im2colling) {
+    when (cntl.a_fire && mesh.io.a.fire && !cntl.a_garbage && cntl.a_unpadded_cols > 0.U) {
       when (cntl.a_read_from_acc) {
         io.acc.read_resp(cntl.a_bank_acc).ready := !io.acc.read_resp(cntl.a_bank_acc).bits.fromDMA
       }.otherwise {
@@ -998,40 +945,40 @@ class ExecuteController[T <: Data, U <: Data, V <: Data](xLen: Int, tagWidth: In
     pending_completed_rob_ids.foreach(_.valid := false.B)
   }
 
-  // Performance counter
-  CounterEventIO.init(io.counter)
-  io.counter.connectEventSignal(CounterEvent.EXE_ACTIVE_CYCLE, control_state === compute)
-  io.counter.connectEventSignal(CounterEvent.EXE_FLUSH_CYCLE,
-    control_state === flushing || control_state === flush)
-  io.counter.connectEventSignal(CounterEvent.EXE_CONTROL_Q_BLOCK_CYCLE,
-    !mesh_cntl_signals_q.io.enq.ready && mesh_cntl_signals_q.io.enq.valid)
-  io.counter.connectEventSignal(CounterEvent.EXE_PRELOAD_HAZ_CYCLE,
-    cmd.valid(0) && DoPreloads(0) && cmd.valid(1) && raw_hazard_pre)
-  io.counter.connectEventSignal(CounterEvent.EXE_OVERLAP_HAZ_CYCLE,
-    cmd.valid(0) && DoPreloads(1) && cmd.valid(1) && DoComputes(0) && cmd.valid(2) && raw_hazard_mulpre)
-  io.counter.connectEventSignal(CounterEvent.A_GARBAGE_CYCLES, cntl.a_garbage)
-  io.counter.connectEventSignal(CounterEvent.B_GARBAGE_CYCLES, cntl.b_garbage)
-  io.counter.connectEventSignal(CounterEvent.D_GARBAGE_CYCLES, cntl.d_garbage)
-  io.counter.connectEventSignal(CounterEvent.ACC_A_WAIT_CYCLE,
-    !(!cntl.a_fire || mesh.io.a.fire || !mesh.io.a.ready) && cntl.a_read_from_acc && !cntl.im2colling)
-  io.counter.connectEventSignal(CounterEvent.ACC_B_WAIT_CYCLE,
-    !(!cntl.b_fire || mesh.io.b.fire || !mesh.io.b.ready) && cntl.b_read_from_acc)
-  io.counter.connectEventSignal(CounterEvent.ACC_D_WAIT_CYCLE,
-    !(!cntl.d_fire || mesh.io.d.fire || !mesh.io.d.ready) && cntl.d_read_from_acc)
-  io.counter.connectEventSignal(CounterEvent.SCRATCHPAD_A_WAIT_CYCLE,
-    !(!cntl.a_fire || mesh.io.a.fire || !mesh.io.a.ready) && !cntl.a_read_from_acc && !cntl.im2colling)
-  io.counter.connectEventSignal(CounterEvent.SCRATCHPAD_B_WAIT_CYCLE,
-    !(!cntl.b_fire || mesh.io.b.fire || !mesh.io.b.ready) && !cntl.b_read_from_acc)
-  io.counter.connectEventSignal(CounterEvent.SCRATCHPAD_D_WAIT_CYCLE,
-    !(!cntl.d_fire || mesh.io.d.fire || !mesh.io.d.ready) && !cntl.d_read_from_acc)
+  // // Performance counter
+  // CounterEventIO.init(io.counter)
+  // io.counter.connectEventSignal(CounterEvent.EXE_ACTIVE_CYCLE, control_state === compute)
+  // io.counter.connectEventSignal(CounterEvent.EXE_FLUSH_CYCLE,
+  //   control_state === flushing || control_state === flush)
+  // io.counter.connectEventSignal(CounterEvent.EXE_CONTROL_Q_BLOCK_CYCLE,
+  //   !mesh_cntl_signals_q.io.enq.ready && mesh_cntl_signals_q.io.enq.valid)
+  // io.counter.connectEventSignal(CounterEvent.EXE_PRELOAD_HAZ_CYCLE,
+  //   cmd.valid(0) && DoPreloads(0) && cmd.valid(1) && raw_hazard_pre)
+  // io.counter.connectEventSignal(CounterEvent.EXE_OVERLAP_HAZ_CYCLE,
+  //   cmd.valid(0) && DoPreloads(1) && cmd.valid(1) && DoComputes(0) && cmd.valid(2) && raw_hazard_mulpre)
+  // io.counter.connectEventSignal(CounterEvent.A_GARBAGE_CYCLES, cntl.a_garbage)
+  // io.counter.connectEventSignal(CounterEvent.B_GARBAGE_CYCLES, cntl.b_garbage)
+  // io.counter.connectEventSignal(CounterEvent.D_GARBAGE_CYCLES, cntl.d_garbage)
+  // io.counter.connectEventSignal(CounterEvent.ACC_A_WAIT_CYCLE,
+  //   !(!cntl.a_fire || mesh.io.a.fire || !mesh.io.a.ready) && cntl.a_read_from_acc && !cntl.im2colling)
+  // io.counter.connectEventSignal(CounterEvent.ACC_B_WAIT_CYCLE,
+  //   !(!cntl.b_fire || mesh.io.b.fire || !mesh.io.b.ready) && cntl.b_read_from_acc)
+  // io.counter.connectEventSignal(CounterEvent.ACC_D_WAIT_CYCLE,
+  //   !(!cntl.d_fire || mesh.io.d.fire || !mesh.io.d.ready) && cntl.d_read_from_acc)
+  // io.counter.connectEventSignal(CounterEvent.SCRATCHPAD_A_WAIT_CYCLE,
+  //   !(!cntl.a_fire || mesh.io.a.fire || !mesh.io.a.ready) && !cntl.a_read_from_acc && !cntl.im2colling)
+  // io.counter.connectEventSignal(CounterEvent.SCRATCHPAD_B_WAIT_CYCLE,
+  //   !(!cntl.b_fire || mesh.io.b.fire || !mesh.io.b.ready) && !cntl.b_read_from_acc)
+  // io.counter.connectEventSignal(CounterEvent.SCRATCHPAD_D_WAIT_CYCLE,
+  //   !(!cntl.d_fire || mesh.io.d.fire || !mesh.io.d.ready) && !cntl.d_read_from_acc)
 
-  if (use_firesim_simulation_counters) {
-    val ex_flush_cycle = control_state === flushing || control_state === flush
-    val ex_preload_haz_cycle = cmd.valid(0) && DoPreloads(0) && cmd.valid(1) && raw_hazard_pre
-    val ex_mulpre_haz_cycle = cmd.valid(0) && DoPreloads(1) && cmd.valid(1) && DoComputes(0) && cmd.valid(2) && raw_hazard_mulpre
+  // if (use_firesim_simulation_counters) {
+  //   val ex_flush_cycle = control_state === flushing || control_state === flush
+  //   val ex_preload_haz_cycle = cmd.valid(0) && DoPreloads(0) && cmd.valid(1) && raw_hazard_pre
+  //   val ex_mulpre_haz_cycle = cmd.valid(0) && DoPreloads(1) && cmd.valid(1) && DoComputes(0) && cmd.valid(2) && raw_hazard_mulpre
 
-    PerfCounter(ex_flush_cycle, "ex_flush_cycle", "cycles during which the ex controller is flushing the spatial array")
-    PerfCounter(ex_preload_haz_cycle, "ex_preload_haz_cycle", "cycles during which the execute controller is stalling preloads due to hazards")
-    PerfCounter(ex_mulpre_haz_cycle, "ex_mulpre_haz_cycle", "cycles during which the execute controller is stalling matmuls due to hazards")
-  }
+  //   PerfCounter(ex_flush_cycle, "ex_flush_cycle", "cycles during which the ex controller is flushing the spatial array")
+  //   PerfCounter(ex_preload_haz_cycle, "ex_preload_haz_cycle", "cycles during which the execute controller is stalling preloads due to hazards")
+  //   PerfCounter(ex_mulpre_haz_cycle, "ex_mulpre_haz_cycle", "cycles during which the execute controller is stalling matmuls due to hazards")
+  // }
 }

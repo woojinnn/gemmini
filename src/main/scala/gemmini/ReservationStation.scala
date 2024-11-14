@@ -53,7 +53,7 @@ class ReservationStation[T <: Data : Arithmetic, U <: Data, V <: Data](config: G
 
     val busy = Output(Bool())
 
-    val counter = new CounterEventIO()
+    // val counter = new CounterEventIO()
   })
 
   // TODO make this a ChiselEnum
@@ -530,42 +530,42 @@ class ReservationStation[T <: Data : Arithmetic, U <: Data, V <: Data](config: G
     dontTouch(e.bits.allocated_at)
   }
 
-  val cntr = Counter(2000000)
-  when (cntr.inc()) {
-    printf(p"Utilization: $utilization\n")
-    printf(p"Utilization ld q (incomplete): $utilization_ld_q_unissued\n")
-    printf(p"Utilization st q (incomplete): $utilization_st_q_unissued\n")
-    printf(p"Utilization ex q (incomplete): $utilization_ex_q_unissued\n")
-    printf(p"Utilization ld q: $utilization_ld_q\n")
-    printf(p"Utilization st q: $utilization_st_q\n")
-    printf(p"Utilization ex q: $utilization_ex_q\n")
+  // val cntr = Counter(2000000)
+  // when (cntr.inc()) {
+  //   printf(p"Utilization: $utilization\n")
+  //   printf(p"Utilization ld q (incomplete): $utilization_ld_q_unissued\n")
+  //   printf(p"Utilization st q (incomplete): $utilization_st_q_unissued\n")
+  //   printf(p"Utilization ex q (incomplete): $utilization_ex_q_unissued\n")
+  //   printf(p"Utilization ld q: $utilization_ld_q\n")
+  //   printf(p"Utilization st q: $utilization_st_q\n")
+  //   printf(p"Utilization ex q: $utilization_ex_q\n")
 
-    if (use_firesim_simulation_counters) {
-      printf(SynthesizePrintf("Utilization: %d\n", utilization))
-      printf(SynthesizePrintf("Utilization ld q (incomplete): %d\n", utilization_ld_q_unissued))
-      printf(SynthesizePrintf("Utilization st q (incomplete): %d\n", utilization_st_q_unissued))
-      printf(SynthesizePrintf("Utilization ex q (incomplete): %d\n", utilization_ex_q_unissued))
-      printf(SynthesizePrintf("Utilization ld q: %d\n", utilization_ld_q))
-      printf(SynthesizePrintf("Utilization st q: %d\n", utilization_st_q))
-      printf(SynthesizePrintf("Utilization ex q: %d\n", utilization_ex_q))
-    }
+  //   if (use_firesim_simulation_counters) {
+  //     printf(SynthesizePrintf("Utilization: %d\n", utilization))
+  //     printf(SynthesizePrintf("Utilization ld q (incomplete): %d\n", utilization_ld_q_unissued))
+  //     printf(SynthesizePrintf("Utilization st q (incomplete): %d\n", utilization_st_q_unissued))
+  //     printf(SynthesizePrintf("Utilization ex q (incomplete): %d\n", utilization_ex_q_unissued))
+  //     printf(SynthesizePrintf("Utilization ld q: %d\n", utilization_ld_q))
+  //     printf(SynthesizePrintf("Utilization st q: %d\n", utilization_st_q))
+  //     printf(SynthesizePrintf("Utilization ex q: %d\n", utilization_ex_q))
+  //   }
 
-    printf(p"Packed deps: $packed_deps\n")
-  }
+  //   printf(p"Packed deps: $packed_deps\n")
+  // }
 
-  if (use_firesim_simulation_counters) {
-    PerfCounter(io.busy, "reservation_station_busy", "cycles where reservation station has entries")
-    PerfCounter(!io.alloc.ready, "reservation_station_full", "cycles where reservation station is full")
-  }
+  // if (use_firesim_simulation_counters) {
+  //   PerfCounter(io.busy, "reservation_station_busy", "cycles where reservation station has entries")
+  //   PerfCounter(!io.alloc.ready, "reservation_station_full", "cycles where reservation station is full")
+  // }
 
   when (reset.asBool) {
     entries.foreach(_.valid := false.B)
   }
 
-  CounterEventIO.init(io.counter)
-  io.counter.connectExternalCounter(CounterExternal.RESERVATION_STATION_LD_COUNT, utilization_ld_q)
-  io.counter.connectExternalCounter(CounterExternal.RESERVATION_STATION_ST_COUNT, utilization_st_q)
-  io.counter.connectExternalCounter(CounterExternal.RESERVATION_STATION_EX_COUNT, utilization_ex_q)
-  io.counter.connectEventSignal(CounterEvent.RESERVATION_STATION_ACTIVE_CYCLES, io.busy)
-  io.counter.connectEventSignal(CounterEvent.RESERVATION_STATION_FULL_CYCLES, !io.alloc.ready)
+  // CounterEventIO.init(io.counter)
+  // io.counter.connectExternalCounter(CounterExternal.RESERVATION_STATION_LD_COUNT, utilization_ld_q)
+  // io.counter.connectExternalCounter(CounterExternal.RESERVATION_STATION_ST_COUNT, utilization_st_q)
+  // io.counter.connectExternalCounter(CounterExternal.RESERVATION_STATION_EX_COUNT, utilization_ex_q)
+  // io.counter.connectEventSignal(CounterEvent.RESERVATION_STATION_ACTIVE_CYCLES, io.busy)
+  // io.counter.connectEventSignal(CounterEvent.RESERVATION_STATION_FULL_CYCLES, !io.alloc.ready)
 }
